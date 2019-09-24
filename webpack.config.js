@@ -4,10 +4,10 @@ const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
 
 let webpackConfig = {
     entry: {
-        voronoimap: './src/visualizations/voronoimap.ts'
+        voronoimap: './src/visualizations/leaflet-looker.ts'
     },
     output: {
-        filename: 'index.html',
+        filename: 'index.js',
         path: path.join(__dirname, 'dist'),
         library: '[name]',
         libraryTarget: 'umd'
@@ -21,21 +21,20 @@ let webpackConfig = {
     module: {
         rules: [
             { test: /\.ts$/, loader: 'ts-loader' },
-            { test: /\.css$/, loader: [ 'to-string-loader', 'css-loader' ] },
-          {
-            test: /\.(png|jpg|gif)$/,
-            use: [
-              {
-                loader: 'file-loader',
-                options: {
-                  name: '[name].[ext]',
-                  outputPath: 'assets/img',
-                  publicPath: 'assets/img'
-                }
-              }
-            ]
-          },
-          { test: /\.scss$/,
+            { test: /\.css$/, loader: ['to-string-loader', 'css-loader'] },
+            {
+                test: /\.(png|jpg|gif)$/,
+                use: [{
+                    loader: 'file-loader',
+                    options: {
+                        name: '[name].[ext]',
+                        outputPath: 'assets/img',
+                        publicPath: 'assets/img'
+                    }
+                }]
+            },
+            {
+                test: /\.scss$/,
                 use: [
                     'style-loader',
                     'css-loader',
@@ -58,7 +57,6 @@ let webpackConfig = {
         https: true
     },
     devtool: 'eval',
-    watch: true
 };
 
 module.exports = webpackConfig;
