@@ -13,15 +13,20 @@ declare var looker: Looker;
 let currentPoint;
 let currentRadius;
 
-interface VoronoiMap extends VisualizationDefinition {}
+// These are used to track the current zoom and positioning of the map
+let oldZoom;
+let oldLat;
+let oldLng;
+
+// This is to check if the initial configs come through, 
+// which happens on the 4th update or so, it depends.  It's tricky.
+let isInitialized = false;
+
+interface LeafletMap extends VisualizationDefinition {}
 
 // initializing and drawing first map, before we have any data.
 // this initial location bounds the US.
 let dataBounds = [[49, -126], [24, -65]];
-const setDataBounds = newBounds => (dataBounds = newBounds);
-
-let countRenders = 0;
-const initialRenders = 10;
 
 // Initialize the map.
 let map = new L.Map("vis")
@@ -30,11 +35,11 @@ let map = new L.Map("vis")
 
 // Having layer variables declared in this scope makes it easier to unmount.
 let pointsLayer;
-let voronoiLayer;
+let linesLayer;
 
-const vis: VoronoiMap = {
-  id: "voronoi",
-  label: "voronoi",
+const vis: LeafletMap = {
+  id: "leaflet",
+  label: "leaflet",
   options: {
     pointColor: {
       type: "string",
@@ -60,11 +65,11 @@ const vis: VoronoiMap = {
       label: "Line Color",
       display: "color"
     },
-    zoomLevel: {
+    zoom: {
       min: 1,
       max: 20,
       step: 1,
-      default: 3,
+      default: 4,
       type: "number",
       section: "Windowing",
       label: "Zoom Level",
@@ -73,21 +78,21 @@ const vis: VoronoiMap = {
     lat: {
       min: -90,
       max: 90,
-      step: 1,
+      step: 0.000001,
       default: 0,
       type: "number",
       section: "Windowing",
-      label: "Zoom Level",
+      label: "Latitude",
       display: "range"
     },
     lng: {
       min: -180,
       max: 180,
-      step: 1,
+      step: 0.000001,
       default: 0,
       type: "number",
       section: "Windowing",
-      label: "Zoom Level",
+      label: "Longitude",
       display: "range"
     }
   },
@@ -112,24 +117,37 @@ const vis: VoronoiMap = {
     var osmAttrib =
       'Map data © <a href="https://openstreetmap.org">OpenStreetMap</a> contributors';
     var osm = new L.TileLayer(osmUrl, {
-      minZoom: 4,
+      minZoom: 2,
       maxZoom: 20,
       attribution: osmAttrib
     });
     map.addLayer(osm);
-    map.on("zoomanimevent", e => onZoomAnimEventAction(e, this));
+
+    // bind action tracking for zoom and movement
+    map.on("zoomend", () => onZoomEndAction(this));
+    map.on("moveend", () => onMoveEndAction(this));
   },
 
   // Render in response to the data
   update: function(data, element, config, queryResponse) {
-    const [bounds, minLat, minLong, maxLat, maxLong] = getDataBounds(data);
-    map.fitBounds(bounds);
-    if (countRenders <= initialRenders) {
-      map.fitBounds(bounds);
-      countRenders++;
+    // const [bounds, minLat, minLong, maxLat, maxLong] = getDataBounds(data);
+
+
+    if (!isInitialized && config.zoom) {
+      
+    map.flyTo(L.latLng(config.lat, config.lng), config.zoom);
+isInitialized = true;
     }
 
-    setDataBounds(bounds);
+    // if this is the first render, update the zoom with the stored parameters
+    // if (!oldLat && !oldLng && config.lat === 0 && config.lng === 0) {
+    // } else if (config.lat === 0 && config.lng === 0) {
+    //   setDataBounds(getDataBounds(data)[0]);
+    // }
+
+    if (config.lat !== oldLat) oldLat = config.lat;
+    if (config.lng !== oldLng) oldLng = config.lng;
+    if (config.zoom !== oldZoom) oldZoom = config.zoom;
 
     addPoints(
       simplePointData(data),
@@ -142,21 +160,8 @@ const vis: VoronoiMap = {
   }
 };
 
-// convert to simple points for voronoi calculation
+// Helper function to convert to simple points if necessary
 const simplePointData = data => data.map(x => x["users.location"].value);
-
-// Using bounds helps optimize the voronoi
-const getDataBounds = data => {
-  const lats = simplePointData(data).map(x => x[0]);
-  const longs = simplePointData(data).map(x => x[1]);
-  const minLat = Math.min(...lats);
-  let minLong = Math.min(...longs);
-  let maxLat = Math.max(...lats);
-  let maxLong = Math.max(...longs);
-
-  const dataBounds = [[maxLat, minLong], [minLat, maxLong]];
-  return [dataBounds, minLat, minLong, maxLat, maxLong];
-};
 
 const findSourceDataPoint = (latlng, fullData) => {
   const filterString = `${latlng.lat},${latlng.lng}`;
@@ -179,15 +184,15 @@ function addPoints(data, map, pointColor, pointRadius, fullData, lineColor) {
     data.map(function(v) {
       return L.circleMarker(L.latLng(v), {
         radius: pointRadius || 5,
-        color: pointColor,
+        color: v.color || pointColor,
         stroke: false,
         fill: true,
-        fillColor: pointColor,
+        fillColor: v.color || pointColor,
         fillOpacity: 0.4,
         interactive: true
       })
-        .on("mouseover", e => onHoverAction(e, lineColor, data))
-        .on("click", e => onHoverAction(e, lineColor, data))
+        .on("mouseover", e => onHoverAction(e, v.color || lineColor, data))
+        .on("click", e => onHoverAction(e, v.color || lineColor, data))
         .bindPopup(x => popupContent(x._latlng, fullData), popupOptions);
     })
   );
@@ -196,7 +201,7 @@ function addPoints(data, map, pointColor, pointRadius, fullData, lineColor) {
 
 function onHoverAction(e, color, data) {
   // reset the layer when hovering on a new point.
-  voronoiLayer && map.removeLayer(voronoiLayer);
+  linesLayer && map.removeLayer(linesLayer);
 
   const lat = e.target._latlng.lat;
   const lng = e.target._latlng.lng;
@@ -209,8 +214,8 @@ function onHoverAction(e, color, data) {
     return [[lat, lng], [point[0], point[1]]];
   });
   if (allLines.length > 0) {
-    voronoiLayer = L.polyline(allLines, { color: color });
-    map.addLayer(voronoiLayer, "voronoiLines");
+    linesLayer = L.polyline(allLines, { color: color });
+    map.addLayer(linesLayer, "voronoiLines");
     currentPoint = e.containerPoint;
     currentRadius = e.target.options.radius;
   }
@@ -226,21 +231,22 @@ function isMouseWithinRadius(e, currentPoint, currentRadius) {
 function onMouseMoveAction(e) {
   if (currentPoint && !isMouseWithinRadius(e, currentPoint, currentRadius)) {
     currentPoint = null;
-    map.removeLayer(voronoiLayer);
+    map.removeLayer(linesLayer);
   }
 }
 
-function onZoomAnimEventAction(e, viz) {
-  console.dir(e);
-  console.dir(viz);
-  if (!isEqual(e.zoom, viz.config.zoom)) {
-    map.trigger("updateConfig", [{ zoom: e.zoom }]);
+function onZoomEndAction(viz) {
+  if (!isEqual(map.getZoom(), oldZoom)) {
+    viz.trigger("updateConfig", [{ zoom: map.getZoom() }]);
   }
-  if (
-    !isEqual(e.center.lat, viz.config.lat) ||
-    !isEqual(e.center.lng, viz.config.lng)
-  ) {
-    map.trigger("updateConfig", [{ lat: e.center.lat }, { lng: e.center.lng }]);
+}
+
+function onMoveEndAction(viz) {
+  const newLat = map.getCenter().lat;
+  const newLng = map.getCenter().lng;
+
+  if (!isEqual(newLat, oldLat) || !isEqual(newLng, oldLng)) {
+    viz.trigger("updateConfig", [{ lat: newLat, lng: newLng }]);
   }
 }
 
