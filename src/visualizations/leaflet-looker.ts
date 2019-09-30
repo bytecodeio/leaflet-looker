@@ -18,7 +18,7 @@ let oldZoom;
 let oldLat;
 let oldLng;
 
-// This is to check if the initial configs come through, 
+// This is to check if the initial configs come through,
 // which happens on the 4th update or so, it depends.  It's tricky.
 let isInitialized = false;
 
@@ -64,6 +64,22 @@ const vis: LeafletMap = {
       default: "#FF0000",
       label: "Line Color",
       display: "color"
+    },
+    showPopup: {
+      type: "boolean",
+      section: "Style",
+      default: "no",
+      label: "Show Popup"
+    },
+
+    lineNumber: {
+      min: 1,
+      max: 20,
+      step: 1,
+      default: 5,
+      type: "number",
+      section: "Style",
+      label: "Number of Lines"
     },
     zoom: {
       min: 1,
@@ -111,7 +127,9 @@ const vis: LeafletMap = {
     if (typeof config.lineColor != "string") {
       config.lineColor = this.options.lineColor.default;
     }
-
+    if (typeof config.lineNumber != "number") {
+      config.lineNumber = this.options.lineNumber.default;
+    }
     // create the tile layer with correct attribution
     var osmUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
     var osmAttrib =
@@ -132,11 +150,11 @@ const vis: LeafletMap = {
   update: function(data, element, config, queryResponse) {
     // const [bounds, minLat, minLong, maxLat, maxLong] = getDataBounds(data);
 
-
     if (!isInitialized && config.zoom) {
-      
-    map.flyTo(L.latLng(config.lat, config.lng), config.zoom);
-isInitialized = true;
+      map.flyTo(L.latLng(config.lat, config.lng), config.zoom, {
+        animate: false
+      });
+      isInitialized = true;
     }
 
     // if this is the first render, update the zoom with the stored parameters
@@ -149,57 +167,113 @@ isInitialized = true;
     if (config.lng !== oldLng) oldLng = config.lng;
     if (config.zoom !== oldZoom) oldZoom = config.zoom;
 
-    addPoints(
-      simplePointData(data),
-      map,
-      config.pointColor,
-      config.pointRadius,
-      data,
-      config.lineColor
-    );
+    addPoints(simplePointData(data), map, data, config);
   }
 };
 
 // Helper function to convert to simple points if necessary
-const simplePointData = data => data.map(x => x["users.location"].value);
+const simplePointData = data =>
+  data.map(x => {
+    for (var name in x) {
+      if (x.hasOwnProperty(name)) {
+        if (x[name] && x[name].value) return x[name].value;
+      }
+    }
+  });
+
+const findFilterableValue = x => {
+  for (var name in x) {
+    if (x.hasOwnProperty(name)) {
+      if (x[name] && x[name].filterable_value) return x[name].filterable_value;
+    }
+  }
+};
 
 const findSourceDataPoint = (latlng, fullData) => {
   const filterString = `${latlng.lat},${latlng.lng}`;
-  return fullData.find(
-    point => filterString === point["users.location"].filterable_value
-  );
+  return fullData.find(point => filterString === findFilterableValue(point));
 };
 
-function addPoints(data, map, pointColor, pointRadius, fullData, lineColor) {
+function addPoints(data, map, fullData, config) {
   pointsLayer && map.removeLayer(pointsLayer);
+  const pointColor = config.pointColor;
+  const pointRadius = config.pointRadius;
+  const lineColor = config.lineColor;
+  const lineNumber = config.lineNumber;
 
-  var popupOptions = { maxWidth: 500 };
-  var popupContent = (latlng, fullData) =>
-    "<h3> Source data: </h3>" +
-    "<pre>" +
-    JSON.stringify(findSourceDataPoint(latlng, fullData), null, 2) +
-    "</pre>";
+  // unfinished helper function
+  function stripNamedPrefix(x) {
+    for (var name in x) {
+      if (x.hasOwnProperty(name)) {
+        if (x[name] && x[name].value) return { [name]: x[name].value };
+      }
+    }
+  }
 
-  pointsLayer = L.layerGroup(
-    data.map(function(v) {
-      return L.circleMarker(L.latLng(v), {
-        radius: pointRadius || 5,
-        color: v.color || pointColor,
-        stroke: false,
-        fill: true,
-        fillColor: v.color || pointColor,
-        fillOpacity: 0.4,
-        interactive: true
-      })
-        .on("mouseover", e => onHoverAction(e, v.color || lineColor, data))
-        .on("click", e => onHoverAction(e, v.color || lineColor, data))
-        .bindPopup(x => popupContent(x._latlng, fullData), popupOptions);
+  var popupOptions = { maxWidth: 500, autoPan: false };
+  var popupContent = (latlng, fullData) => {
+    const pointData = findSourceDataPoint(latlng, fullData);
+    console.log("pointData: ");
+    console.dir(pointData);
+    console.dir(stripNamedPrefix(pointData));
+    const values = simplePointData([pointData]);
+    console.log("values: ");
+    console.dir(values);
+
+    return (
+      '<div style="padding: 10px 10px 15px, text-align: center">' +
+      values +
+      "</div>"
+    );
+  };
+
+  let circleMarkers = data.map(function(v) {
+    return L.circleMarker(L.latLng(v), {
+      radius: pointRadius || 5,
+      color: v.color || pointColor,
+      stroke: false,
+      fill: true,
+      fillColor: v.color || pointColor,
+      fillOpacity: 0.4,
+      interactive: true
     })
-  );
+      .on("mouseover", e =>
+        onHoverAction(e, v.color || lineColor, data, lineNumber)
+      )
+      .on("click", e =>
+        onHoverAction(e, v.color || lineColor, data, lineNumber)
+      );
+  });
+  if (config.showPopup) {
+    circleMarkers = circleMarkers.map(x =>
+      x.bindPopup(x => popupContent(x._latlng, fullData), popupOptions)
+    );
+  }
+
+  pointsLayer = L.layerGroup(circleMarkers);
   map.addLayer(pointsLayer, "points");
 }
 
-function onHoverAction(e, color, data) {
+function findDistance(a, b) {
+  const dx2 = Math.pow(a[0] - b[0], 2);
+  const dy2 = Math.pow(a[1] - b[1], 2);
+  return Math.pow(dx2 + dy2, 0.5);
+}
+
+function sortPoints(points, referencePoint) {
+  const pointsWithDistance = points.map(point => {
+    return { ...point, distance: findDistance(point, referencePoint) };
+  });
+  return pointsWithDistance.sort(compareByDistance);
+}
+
+function compareByDistance(a, b) {
+  if (a.distance < b.distance) return -1;
+  if (a.distance > b.distance) return 1;
+  return 0;
+}
+
+function onHoverAction(e, color, data, lineNumber) {
   // reset the layer when hovering on a new point.
   linesLayer && map.removeLayer(linesLayer);
 
@@ -210,7 +284,9 @@ function onHoverAction(e, color, data) {
     const latlng = L.latLng(point[0], point[1]);
     return map.getBounds().contains(latlng);
   });
-  const allLines = visiblePoints.map(point => {
+  const orderedPoints = sortPoints(visiblePoints, [lat, lng]);
+  const nearestPoints = orderedPoints.slice(0, lineNumber);
+  const allLines = nearestPoints.map(point => {
     return [[lat, lng], [point[0], point[1]]];
   });
   if (allLines.length > 0) {
