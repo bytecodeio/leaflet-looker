@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 /node_modules
 node_modules
 dist
+=======
+node_modules/*
+dist/*
+.git/*
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875

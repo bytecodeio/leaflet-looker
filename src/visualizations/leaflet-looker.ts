@@ -41,6 +41,7 @@ const vis: LeafletMap = {
   id: "leaflet",
   label: "leaflet",
   options: {
+<<<<<<< HEAD
     colorRange: {
       type: "array",
       section: "Style",
@@ -56,6 +57,24 @@ const vis: LeafletMap = {
         "#b57052",
         "#ed69af"
       ]
+=======
+    pointColor: {
+      type: "string",
+      section: "Style",
+      default: "#000000",
+      label: "Point Color",
+      display: "color"
+    },
+    pointRadius: {
+      min: 1,
+      max: 20,
+      step: 1,
+      default: 3,
+      type: "number",
+      section: "Style",
+      label: "Point Radius",
+      display: "range"
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     },
     lineColor: {
       type: "string",
@@ -67,9 +86,16 @@ const vis: LeafletMap = {
     showPopup: {
       type: "boolean",
       section: "Style",
+<<<<<<< HEAD
       default: "false",
       label: "Show Popup"
     },
+=======
+      default: "no",
+      label: "Show Popup"
+    },
+
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     lineNumber: {
       min: 1,
       max: 20,
@@ -79,6 +105,7 @@ const vis: LeafletMap = {
       section: "Style",
       label: "Number of Lines"
     },
+<<<<<<< HEAD
     maxPointSize: {
       min: 1,
       max: 20,
@@ -97,6 +124,8 @@ const vis: LeafletMap = {
       section: "Style",
       label: "Minimum Point Size"
     },
+=======
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     zoom: {
       min: 1,
       max: 20,
@@ -131,9 +160,20 @@ const vis: LeafletMap = {
   // Set up the initial state of the visualization
   create: function(element, config) {
     // set default props:
+<<<<<<< HEAD
     if (config.colorRange == null || !/^#/.test(config.colorRange[0])) {
       // Workaround for Looker bug where we don't get custom colors.
       config.colorRange = this.options.colorRange.default;
+=======
+    if (typeof config.pointColor != "string") {
+      config.pointColor = this.options.pointColor.default;
+    }
+    if (
+      typeof config.pointRadius != "number" ||
+      config.pointRadius == this.options.pointRadius.max
+    ) {
+      config.pointRadius = this.options.pointRadius.default;
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     }
     if (typeof config.lineColor != "string") {
       config.lineColor = this.options.lineColor.default;
@@ -141,12 +181,15 @@ const vis: LeafletMap = {
     if (typeof config.lineNumber != "number") {
       config.lineNumber = this.options.lineNumber.default;
     }
+<<<<<<< HEAD
     if (typeof config.maxPointSize != "number") {
       config.maxPointSize = this.options.maxPointSize.default;
     }
     if (typeof config.minPointSize != "number") {
       config.minPointSize = this.options.minPointSize.default;
     }
+=======
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     // create the tile layer with correct attribution
     var osmUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
     var osmAttrib =
@@ -167,6 +210,7 @@ const vis: LeafletMap = {
   update: function(data, element, config, queryResponse) {
     // const [bounds, minLat, minLong, maxLat, maxLong] = getDataBounds(data);
 
+<<<<<<< HEAD
     let dimensionQueryParts = queryResponse.fields.dimensions.map(x => {
       return {
         type: x.type,
@@ -190,6 +234,8 @@ const vis: LeafletMap = {
 
     let allQueryParts = [...dimensionQueryParts, ...measureQueryParts];
 
+=======
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     if (!isInitialized && config.zoom) {
       map.flyTo(L.latLng(config.lat, config.lng), config.zoom, {
         animate: false
@@ -207,7 +253,11 @@ const vis: LeafletMap = {
     if (config.lng !== oldLng) oldLng = config.lng;
     if (config.zoom !== oldZoom) oldZoom = config.zoom;
 
+<<<<<<< HEAD
     addPoints(simplePointData(data), map, data, config, allQueryParts);
+=======
+    addPoints(simplePointData(data), map, data, config);
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
   }
 };
 
@@ -234,6 +284,7 @@ const findSourceDataPoint = (latlng, fullData) => {
   return fullData.find(point => filterString === findFilterableValue(point));
 };
 
+<<<<<<< HEAD
 function findDataColors(fullData, config, queryParts) {
   const firstMeasureName = queryParts.filter(x => x.isFirstMeasure)[0].name;
 
@@ -323,6 +374,48 @@ function addPoints(data, map, fullData, config, queryParts) {
       stroke: false,
       fill: true,
       fillColor: dataColors[i],
+=======
+function addPoints(data, map, fullData, config) {
+  pointsLayer && map.removeLayer(pointsLayer);
+  const pointColor = config.pointColor;
+  const pointRadius = config.pointRadius;
+  const lineColor = config.lineColor;
+  const lineNumber = config.lineNumber;
+
+  // unfinished helper function
+  function stripNamedPrefix(x) {
+    for (var name in x) {
+      if (x.hasOwnProperty(name)) {
+        if (x[name] && x[name].value) return { [name]: x[name].value };
+      }
+    }
+  }
+
+  var popupOptions = { maxWidth: 500, autoPan: false };
+  var popupContent = (latlng, fullData) => {
+    const pointData = findSourceDataPoint(latlng, fullData);
+    console.log("pointData: ");
+    console.dir(pointData);
+    console.dir(stripNamedPrefix(pointData));
+    const values = simplePointData([pointData]);
+    console.log("values: ");
+    console.dir(values);
+
+    return (
+      '<div style="padding: 10px 10px 15px, text-align: center">' +
+      values +
+      "</div>"
+    );
+  };
+
+  let circleMarkers = data.map(function(v) {
+    return L.circleMarker(L.latLng(v), {
+      radius: pointRadius || 5,
+      color: v.color || pointColor,
+      stroke: false,
+      fill: true,
+      fillColor: v.color || pointColor,
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
       fillOpacity: 0.4,
       interactive: true
     })
@@ -335,10 +428,14 @@ function addPoints(data, map, fullData, config, queryParts) {
   });
   if (config.showPopup) {
     circleMarkers = circleMarkers.map(x =>
+<<<<<<< HEAD
       x.bindPopup(
         x => popupContent(x._latlng, fullData, queryParts),
         popupOptions
       )
+=======
+      x.bindPopup(x => popupContent(x._latlng, fullData), popupOptions)
+>>>>>>> 00a44b6884ab287a19ff9b3a93bb824c75b2b875
     );
   }
 
